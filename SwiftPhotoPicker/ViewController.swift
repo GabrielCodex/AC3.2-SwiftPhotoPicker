@@ -8,10 +8,15 @@
 
 import UIKit
 import AVFoundation
+//step 1 import
+import AVKit
+import MobileCoreServices
+
 
 class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     @IBOutlet weak var imageView: UIImageView!
     var capturedImages: [UIImage]! = []
+    var videoURL: URL?
     var imagePickerController: UIImagePickerController!
     
     @IBOutlet var overlayView: UIView!
@@ -41,7 +46,7 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
             }
         }
     }
-    
+
     @IBAction func showImagePickerForPhotoPicker(sender: UIBarButtonItem) {
         showImagePickerForSourceType(sourceType: .photoLibrary, fromButton: sender)
     }
@@ -60,26 +65,29 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
         imagePickerController.sourceType = sourceType
         imagePickerController.delegate = self
         imagePickerController.modalPresentationStyle = (sourceType == .camera) ? .fullScreen : .popover
+        // step 2 && look at documentation, Imagepicker controller loads movies and images. By default loads images
+        imagePickerController.mediaTypes = [String(kUTTypeMovie), String(kUTTypeImage)]
         
         if let presentationController = imagePickerController.popoverPresentationController {
             presentationController.barButtonItem = button
             presentationController.permittedArrowDirections = .any
         }
-        
-        if (sourceType == .camera) {
-            // The user wants to use the camera interface. Set up our custom overlay view for the camera.
-            imagePickerController.showsCameraControls = false;
-            
-            /*
-             Load the overlay view from the OverlayView nib file. Self is the File's Owner for the nib file, so the overlayView outlet is set to the main view in the nib. Pass that view to the image picker controller to use as its overlay view, and set self's reference to the view to nil.
-             */
-            //[[NSBundle mainBundle] loadNibNamed:@"OverlayView" owner:self options:nil];
-            Bundle.main.loadNibNamed("OverlayView", owner: self, options: nil)
-            
-            self.overlayView.frame = (imagePickerController.cameraOverlayView?.frame)!;
-            imagePickerController.cameraOverlayView = self.overlayView;
-            self.overlayView = nil;
-        }
+        // turn off custom overlay/ nib 
+//        if (sourceType == .camera) {
+//            // The user wants to use the camera interface. Set up our custom overlay view for the camera.
+//            imagePickerController.showsCameraControls = false;
+//            
+//            /*
+//             Load the overlay view from the OverlayView nib file. Self is the File's Owner for the nib file, so the overlayView outlet is set to the main view in the nib. Pass that view to the image picker controller to use as its overlay view, and set self's reference to the view to nil.
+//             */
+//            //[[NSBundle mainBundle] loadNibNamed:@"OverlayView" owner:self options:nil];
+//            /// commented out nib/ overlay and turned imagePickerController.showsCameraControls = false to true
+//            Bundle.main.loadNibNamed("OverlayView", owner: self, options: nil)
+//            
+//            self.overlayView.frame = (imagePickerController.cameraOverlayView?.frame)!;
+//            imagePickerController.cameraOverlayView = self.overlayView;
+//            self.overlayView = nil;
+//        }
         
         self.imagePickerController = imagePickerController; // we need this for later
         self.present(imagePickerController, animated: true, completion: nil)
@@ -88,7 +96,7 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
     @IBAction func showImagePickerForCamera(sender: UIBarButtonItem) {
         let authStatus = AVCaptureDevice.authorizationStatus(forMediaType: AVMediaTypeVideo)
         if authStatus == .denied {
-        
+            
         }
         else if authStatus == .notDetermined {
             AVCaptureDevice.requestAccess(forMediaType: AVMediaTypeVideo) { (granted: Bool) in
@@ -104,35 +112,80 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
     }
     
     private func finishAndUpdate() {
-        self.dismiss(animated: true, completion: nil)
-        
+        self.dismiss(animated: true) {
+            if let url = self.videoURL {
+               // the below code is how we use a link from the internet to see a video
+                //let remoteURLString = "https://content.uplynk.com/7dd85b057b134b14afdb3d710398c2a8.m3u8"
+                //let remoteURl = URL(string: remoteURLString)
+                //let player = AVPlayer(url: remoteURL)
+                let player = AVPlayer(url: url)
+                let playerController = AVPlayerViewController()
+                
+                playerController.player = player
+                self.present(playerController, animated: true, completion: {
+                    print("--------------------------------I prenset myself")
+                })
+                //                self.addChildViewController(playerController)
+                //                self.view.addSubview(playerController.view)
+                //                playerController.view.frame = self.view.frame
+                // could alternatively grab the imageView's frame
+                
+                player.play()
+                self.videoURL = nil
+            }
+        }
+    
         if self.capturedImages.count > 0 {
-            self.imageView.image = self.capturedImages[0]
+            if self.capturedImages.count == 1 {
+                self.imageView.image = self.capturedImages[0]
+            }
+            else {
+                self.imageView.animationImages = self.capturedImages
+                self.imageView.animationDuration = 5.0
+                self.imageView.animationRepeatCount = 0
+                self.imageView.startAnimating()
+            }
         }
         self.capturedImages.removeAll()
-        self.imagePickerController = nil
     }
     
-
+    
     // MARK: - UIImagePickerControllerDelegate
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [String : Any]) {
-        if let image = info[UIImagePickerControllerOriginalImage] as? UIImage {
-            self.capturedImages.append(image)
-        }
         
-        if let timer = self.cameraTimer,
-            timer.isValid {
-            print("continuing to snap until the user hits done")
-            return
+        switch info[UIImagePickerControllerMediaType] as! String {
+        case String(kUTTypeMovie):
+            if let url = info[UIImagePickerControllerMediaURL] as? URL {
+                
+                self.videoURL = url
+                print("Video playback?????????????????????????")
+            }
+            else {
+                print("Error getting url from picked asset")
+            }
+        case String(kUTTypeImage):
+            if let image = info[UIImagePickerControllerOriginalImage] as? UIImage {
+                self.capturedImages.append(image)
+                print("appending \(image)")
+            }
+            if let timer = self.cameraTimer,
+                timer.isValid {
+                print("continuing")
+                return
+            }
+        default:
+            print("Unknown type")
         }
-        
         self.finishAndUpdate()
-    }
+        
+    }// end of switch
+    
+    
     
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
         self.dismiss(animated: true, completion: nil)
     }
-
+    
     // MARK: - Overlay Actions
     @IBAction func done(sender: UIBarButtonItem) {
         if let timer = self.cameraTimer,
@@ -164,8 +217,8 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
         self.startStopButton.action = #selector(stopTakingPicturesAtIntervals(sender:))
         self.doneButton.isEnabled = false
         self.delayedPhotoButton.isEnabled = false
-        self.takePictureButton.isEnabled = false
         let cameraTimer = Timer(timeInterval: 1.5, target: self, selector: #selector(timedPhotoFire(timer:)), userInfo: nil, repeats: true)
+        self.takePictureButton.isEnabled = false
         RunLoop.main.add(cameraTimer, forMode: .defaultRunLoopMode)
         cameraTimer.fire()
         self.cameraTimer = cameraTimer
